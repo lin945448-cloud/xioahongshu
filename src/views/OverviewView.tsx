@@ -5,7 +5,7 @@ import { Segmented, PillToggle } from '@/components/ui/Controls';
 import { KpiCard } from '@/components/KpiCard';
 import { TrendChart, type ChartKind, type SeriesDef } from '@/components/charts/TrendChart';
 import { DonutChart } from '@/components/charts/DistributionCharts';
-import { DropZone, FileManager } from '@/components/DataSource';
+import { DropZone, FileManager, CloudDatasets } from '@/components/DataSource';
 import { useFilteredNotes, useFilterOptions } from '@/hooks/useFiltered';
 import {
   distribution,
@@ -156,6 +156,7 @@ export function OverviewView() {
           <div className="space-y-4 border-t border-ink-200/70 p-4 sm:p-5">
             <FileManager />
             <DropZone compact />
+            <CloudDatasets />
           </div>
         )}
       </div>

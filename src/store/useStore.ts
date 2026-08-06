@@ -26,6 +26,7 @@ interface State {
   setLoading: (v: boolean) => void;
   clearAll: () => void;
   loadDemo: () => void;
+  loadCloudDataset: (files: UploadedFile[], notes: Note[]) => void;
   pushToast: (type: Toast['type'], text: string) => void;
   dismissToast: (id: number) => void;
 }
@@ -80,6 +81,14 @@ export const useStore = create<State>((set, get) => ({
   setLoading: (loading) => set({ loading }),
 
   clearAll: () => set({ files: [], notes: [], filters: emptyFilters(), isDemo: false }),
+
+  loadCloudDataset: (files, notes) =>
+    set({
+      isDemo: false,
+      files,
+      notes: [...notes].sort((a, b) => a.publishAt - b.publishAt),
+      filters: emptyFilters(),
+    }),
 
   loadDemo: () => {
     const { notes, files } = buildDemoData();
