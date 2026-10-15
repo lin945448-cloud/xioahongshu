@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // Same-origin transport only. All authorization remains with Supabase Auth + database RLS.
 // Never add a service-role/secret key here or rewrite user Authorization headers.
-export default async function handler(req: IncomingMessage, res: ServerResponse) {
+export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   const origin = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,12 +25,18 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     const chunks: Buffer[] = [];
     let size = 0;
-    for await (const chunk of req) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      size += buffer.length;
-      if (size > 4_000_000) { res.writeHead(413).end('{"message":"请求过大，请减少单批数据量"}'); return; }
-      chunks.push(buffer);
+    if (req.body !== undefined) {
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+      chunks.push(buffer); size = buffer.length;
+    } else {
+      for await (const chunk of req) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += buffer.length;
+        if (size > 4_000_000) break;
+        chunks.push(buffer);
+      }
     }
+    if (size > 4_000_000) { res.writeHead(413).end('{"message":"请求过大，请减少单批数据量"}'); return; }
     const upstream = await fetch(target, { method: req.method, headers,
       body: size && req.method !== 'GET' && req.method !== 'HEAD' ? Buffer.concat(chunks) : undefined,
       redirect: 'manual', signal: AbortSignal.timeout(25_000) });

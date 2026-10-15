@@ -17,7 +17,10 @@ test('same-origin proxy forwards user credentials, bodies and queries without el
     }
     return originalFetch(url, options);
   };
-  const server = createServer((req, res) => { void handler(req, res); });
+  const server = createServer((req, res) => {
+    if (req.headers['x-test-preparsed']) Object.assign(req, { body: { p_account: 'preparsed' } });
+    void handler(req, res);
+  });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   const root = `http://127.0.0.1:${port}`;
@@ -35,6 +38,9 @@ test('same-origin proxy forwards user credentials, bodies and queries without el
     assert.equal(headers.get('authorization'), 'Bearer viewer-session');
     assert.equal(headers.get('apikey'), 'public-key');
     assert.equal(String(forwarded!.options.body), '{"p_account":"test"}');
+    await originalFetch(`${root}/api/supabase?path=rest/v1/rpc/dashboard_import`, { method: 'POST',
+      headers: { 'x-test-preparsed': '1', 'Content-Type': 'application/json' }, body: '{"p_account":"preparsed"}' });
+    assert.equal(String(forwarded!.options.body), '{"p_account":"preparsed"}');
     await originalFetch(`${root}/api/supabase?path=rest/v1/dashboard_batches`);
     assert.equal(new Headers(forwarded!.options.headers).has('authorization'), false);
     for (const path of ['https://evil.example', 'storage/v1/object', 'auth/v1/../../private', 'rest\\v1\\users']) {

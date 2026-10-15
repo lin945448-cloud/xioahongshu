@@ -3,9 +3,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import handler from '../api/supabase.ts';
+import memberHandler from '../api/member-setup.ts';
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
+  if (url.pathname === '/api/member-setup') { await memberHandler(req, res); return; }
   if (url.pathname.startsWith('/api/supabase/')) {
     url.searchParams.set('path', url.pathname.slice('/api/supabase/'.length));
     req.url = `/api/supabase?${url.searchParams}`;

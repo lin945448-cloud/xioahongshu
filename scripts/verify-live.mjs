@@ -64,6 +64,25 @@ try {
     assert.equal((await admin.rpc('dashboard_set_viewer', { p_email: identities.viewer, p_allowed: false })).error, null);
     assert.equal((await viewer.from('dashboard_batches').select('id')).data.length, 0);
     assert.equal((await admin.rpc('dashboard_delete_batch', { p_id: imported.data })).error, null);
+    const adminToken = (await admin.auth.getSession()).data.session.access_token;
+    const viewerToken = (await viewer.auth.getSession()).data.session.access_token;
+    const setup = (email, token) => fetch(`${baseURL}/api/member-setup`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ email }) });
+    assert.equal((await setup(identities.viewer)).status, 401);
+    assert.equal((await setup(identities.viewer, viewerToken)).status, 403);
+    assert.equal((await setup(identities.admin, adminToken)).status, 400);
+    const newEmail = `xhs-e2e-${stamp}-onboarding@example.com`;
+    const setupResponse = await setup(newEmail, adminToken);
+    assert.equal(setupResponse.status, 200);
+    const credentials = await setupResponse.json();
+    const newUser = await db.query('select id from auth.users where email=$1', [newEmail]);
+    users.push(newUser.rows[0].id);
+    const newViewer = createClient(authURL, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    assert.equal((await newViewer.auth.verifyOtp({ token_hash: credentials.tokenHash, type: credentials.type })).error, null);
+    assert.equal((await newViewer.rpc('dashboard_role')).data, 'viewer');
+    assert.equal((await newViewer.auth.updateUser({ password: `${randomUUID()}Viewer1!` })).error, null);
+    console.log('PASS admin-only viewer onboarding without email delivery, administrator-target rejection and password setup');
     const recovery = await auth.auth.admin.generateLink({ type: 'recovery', email: identities.admin });
     assert.equal(recovery.error, null);
     const recovered = createClient(authURL, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });

@@ -48,11 +48,14 @@ export function useWorkspaceSession() {
     const refresh = () => { void refreshWorkspace().finally(() => { if (active) setReady(true); }); };
     if (!supabase) { setReady(true); return; }
     const setupToken = new URLSearchParams(window.location.hash.slice(1)).get('setup_token');
+    const requestedType = new URLSearchParams(window.location.hash.slice(1)).get('setup_type');
+    // Supabase creates a signup token when magiclink is requested for a brand-new email.
+    const setupType = requestedType === 'signup' ? 'signup' : requestedType === 'magiclink' ? 'magiclink' : 'recovery';
     if (setupToken) {
       // A one-time recovery token stays in the fragment, never in server access logs.
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
       useWorkspace.setState({ needsPasswordSetup: true });
-      void supabase.auth.verifyOtp({ token_hash: setupToken, type: 'recovery' }).then(({ error }) => {
+      void supabase.auth.verifyOtp({ token_hash: setupToken, type: setupType }).then(({ error }) => {
         if (error) useWorkspace.setState({ error: '密码设置链接已失效或已使用，请联系管理员重新生成。', needsPasswordSetup: false });
       });
     }

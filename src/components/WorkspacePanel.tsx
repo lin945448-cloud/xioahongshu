@@ -121,6 +121,7 @@ function AdminPanel() {
   const [busy, setBusy] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberEmail, setMemberEmail] = useState('');
+  const [setupLink, setSetupLink] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [memberError, setMemberError] = useState('');
   const toast = useStore(s => s.pushToast);
@@ -194,11 +195,29 @@ function AdminPanel() {
     </div>
     <div className="space-y-3">
       <h2 className="text-sm font-semibold">查看权限管理</h2>
-      <p className="text-xs text-ink-500">添加邮箱后，对方用该邮箱注册并确认邮箱即可查看全部内部数据、筛选分析及下载报告；不能上传、删除或管理授权。</p>
+      <p className="text-xs text-ink-500">可以添加已有账号的邮箱授权，也可以生成一次性开通链接，私下交给同事设置密码，无需注册邮件。查看者可查看全部内部数据、筛选分析及下载报告，不能上传、删除或管理授权。</p>
       <form className="flex flex-wrap gap-2" onSubmit={e => { e.preventDefault(); void run(async () => { await setViewer(memberEmail, true); setMemberEmail(''); setMembers(await listMembers()); setMemberError(''); toast('success', '已授予查看权限'); }); }}>
         <input className="input min-w-[240px]" aria-label="要授权的邮箱" type="email" required value={memberEmail} onChange={e => setMemberEmail(e.target.value)} disabled={busy} placeholder="同事的邮箱" />
         <button className="btn btn-primary" disabled={busy}>授权查看</button>
+        <button className="btn" type="button" disabled={busy || !memberEmail.trim()} onClick={() => void run(async () => {
+          setSetupLink('');
+          const { data, error } = await supabase!.auth.getSession();
+          if (error || !data.session) throw new Error('请重新登录');
+          const response = await fetch('/api/member-setup', { method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
+            body: JSON.stringify({ email: memberEmail }) });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.message || '账号开通失败');
+          const link = new URL(window.location.origin);
+          link.hash = new URLSearchParams({ setup_token: result.tokenHash, setup_type: result.type }).toString();
+          setSetupLink(link.toString()); setMembers(await listMembers());
+        })}>生成查看者开通链接</button>
       </form>
+      {setupLink && <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+        <p>一次性开通链接：仅私下交给该邮箱对应的同事，通常 1 小时有效。对方打开后设置自己的密码。不要公开发布。</p>
+        <textarea className="input w-full text-xs" aria-label="查看者开通链接" readOnly value={setupLink} onFocus={e => e.target.select()} />
+        <button className="btn" onClick={() => setSetupLink('')}>隐藏链接</button>
+      </div>}
       {memberError && <p role="alert" className="text-sm text-red-700">授权列表读取失败：{memberError}</p>}
       <div className="max-h-64 overflow-y-auto space-y-2">{members.map(m => <div key={m.email} className="flex items-center justify-between gap-2 text-sm"><span>{m.email} · {m.role === 'admin' ? '管理员' : '查看者'}</span>{m.role === 'viewer' && <button className="btn" disabled={busy} onClick={() => void run(async () => { await setViewer(m.email, false); setMembers(await listMembers()); toast('success', '已撤销查看权限'); })}>撤销授权</button>}</div>)}</div>
       <p className="text-xs text-ink-500">撤销后数据库立即拒绝新的读取请求；对方已打开的页面会在刷新或权限复查时清除数据。已下载的报告无法收回。</p>
