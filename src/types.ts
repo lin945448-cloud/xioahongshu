@@ -1,5 +1,6 @@
 /** 单篇笔记（清洗 + 计算后的标准结构） */
 export interface Note {
+  reportingMonth?: string; // 数据归属月份，与发布时间分别保存
   id: string;
   account: string; // 账号名（默认取文件名）
   fileId: string;
@@ -59,6 +60,7 @@ export interface UploadedFile {
 }
 
 export interface Filters {
+  reportingMonths: string[];
   accounts: string[];
   categories: string[];
   genres: string[];

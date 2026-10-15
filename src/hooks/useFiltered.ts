@@ -30,8 +30,9 @@ export const useFilteredNotes = (): Note[] => {
   const filters = useStore((s) => s.filters);
 
   return useMemo(() => {
-    const { accounts, categories, genres, monthFrom, monthTo } = filters;
+    const { accounts, categories, genres, monthFrom, monthTo, reportingMonths } = filters;
     return notes.filter((n) => {
+      if (reportingMonths.length && !reportingMonths.includes(n.reportingMonth ?? n.ym)) return false;
       if (accounts.length && !accounts.includes(n.account)) return false;
       if (categories.length && !categories.includes(n.category)) return false;
       if (genres.length && !genres.includes(n.genre)) return false;

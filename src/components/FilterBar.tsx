@@ -18,6 +18,8 @@ export function FilterBar() {
   const reset = useStore((s) => s.resetFilters);
   const opts = useFilterOptions();
   const filtered = useFilteredNotes();
+  const notes = useStore(s => s.notes);
+  const reportingMonths = useMemo(() => [...new Set(notes.map(n => n.reportingMonth ?? n.ym))].sort(), [notes]);
 
   const monthOptions = useMemo(
     () => opts.months.map((m) => ({ value: m, label: m })),
@@ -46,6 +48,7 @@ export function FilterBar() {
   }, [filters, opts.months]);
 
   const dirty =
+    filters.reportingMonths.length > 0 ||
     filters.accounts.length > 0 ||
     filters.categories.length > 0 ||
     filters.genres.length > 0 ||
@@ -76,7 +79,7 @@ export function FilterBar() {
           </div>
 
           <div className="min-w-[132px]">
-            <label className="label">起始月份</label>
+            <label className="label">发布起始月份</label>
             <Select
               value={filters.monthFrom ?? ''}
               onChange={(v) => setFilters({ monthFrom: v || null })}
@@ -85,7 +88,7 @@ export function FilterBar() {
           </div>
 
           <div className="min-w-[132px]">
-            <label className="label">结束月份</label>
+            <label className="label">发布结束月份</label>
             <Select
               value={filters.monthTo ?? ''}
               onChange={(v) => setFilters({ monthTo: v || null })}
@@ -93,6 +96,11 @@ export function FilterBar() {
             />
           </div>
 
+          <div className="min-w-[160px]">
+            <label className="label">数据归属月份</label>
+            <MultiSelect value={filters.reportingMonths} onChange={v => setFilters({ reportingMonths: v })}
+              options={reportingMonths} placeholder="全部批次月份" />
+          </div>
           <div className="pb-0.5">
             <label className="label">快捷区间</label>
             <div className="inline-flex items-center gap-0.5 rounded-xl bg-ink-100 p-1">

@@ -32,6 +32,7 @@ interface State {
 }
 
 const emptyFilters = (): Filters => ({
+  reportingMonths: [],
   accounts: [],
   categories: [],
   genres: [],
