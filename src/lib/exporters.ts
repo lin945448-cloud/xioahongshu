@@ -65,6 +65,7 @@ export function exportExcel(notes: Note[], options: ExcelOptions, filename = '�
 
   const detailCols: Col<Note>[] = [
     { header: '账号名', get: (n) => n.account, w: 18 },
+    { header: '数据归属月份', get: (n) => n.reportingMonth ?? n.ym, w: 16 },
     { header: '年月', get: (n) => n.ym, w: 10 },
     { header: '月份', get: (n) => n.month, w: 7 },
     { header: '序号', get: (n) => n.seq, w: 7 },

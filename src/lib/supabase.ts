@@ -1,138 +1,83 @@
-import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import type { Note, UploadedFile } from '@/types';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-/** 是否已配置云端数据库。未配置时所有函数安全降级（返回空/抛友好错误，不崩溃） */
-export const isSupabaseConfigured = Boolean(url && anonKey);
-
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(url as string, anonKey as string, {
-      auth: { persistSession: true, autoRefreshToken: true },
-    })
-  : null;
-
-/** 列表展示用的轻量元信息（不含完整数据） */
-export interface CloudDatasetMeta {
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+export const isSupabaseConfigured = Boolean(url && key);
+export const supabase = isSupabaseConfigured ? createClient(
+  import.meta.env.PROD ? `${window.location.origin}/api/supabase` : url!, key!) : null;
+export type AccessRole = 'admin' | 'viewer' | null;
+export interface BatchMeta {
   id: string;
-  name: string;
+  account: string;
+  reporting_month: string;
+  file_name: string;
   note_count: number;
-  account: string | null;
-  date_min: string | null;
-  date_max: string | null;
   created_at: string;
 }
+export interface Member { email: string; role: 'admin' | 'viewer'; created_at: string }
 
-/** 一份完整数据集：文件列表 + 笔记列表 */
-export interface CloudDatasetPayload {
-  files: UploadedFile[];
-  notes: Note[];
+function client() {
+  if (!supabase) throw new Error('内部数据库尚未配置，请联系管理员');
+  return supabase;
 }
 
-export interface CloudDatasetRow extends CloudDatasetMeta {
-  payload: CloudDatasetPayload;
-}
-
-// ───────────────────────── 鉴权（邮箱 + 密码） ─────────────────────────
-// 必须用登录后的会话才能读写数据：anon key 虽公开，但没有登录会话就没有 uid，
-// 而 RLS 策略要求 auth.uid() = owner，因此陌生人即使拿到 key 也读不到任何数据。
-
-export async function getCurrentUser(): Promise<User | null> {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getUser();
-  return data.user;
-}
-
-export async function signIn(email: string, password: string): Promise<User> {
-  if (!supabase) throw new Error('未配置云端数据库（请设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY）');
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+export async function getRole(): Promise<AccessRole> {
+  const { data, error } = await client().rpc('dashboard_role');
   if (error) throw error;
-  if (!data.user) throw new Error('登录失败');
-  return data.user;
+  return data as AccessRole;
 }
 
-export async function signUp(
-  email: string,
-  password: string
-): Promise<{ user: User | null; needsConfirm: boolean }> {
-  if (!supabase) throw new Error('未配置云端数据库');
-  const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) throw error;
-  // 若开启了「注册需邮件确认」，则 signUp 后 data.session 为 null
-  return { user: data.user, needsConfirm: !data.session };
+export async function listBatches(): Promise<BatchMeta[]> {
+  const all: BatchMeta[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const { data, error } = await client().from('dashboard_batches')
+      .select('id,account,reporting_month,file_name,note_count,created_at')
+      .order('reporting_month', { ascending: false }).order('id').range(offset, offset + 99);
+    if (error) throw error;
+    all.push(...data as BatchMeta[]);
+    if (data.length < 100) return all;
+  }
 }
 
-export async function signOut(): Promise<void> {
-  if (!supabase) return;
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+export async function loadHistory(): Promise<{ files: UploadedFile[]; notes: Note[]; batches: BatchMeta[] }> {
+  const batches = await listBatches();
+  const files: UploadedFile[] = [];
+  const notes: Note[] = [];
+  for (const batch of batches) {
+    const { data, error } = await client().from('dashboard_batches').select('notes').eq('id', batch.id).single();
+    if (error) throw error;
+    const rows = (data.notes as Note[]).map((n, i) => ({ ...n, id: `${batch.id}-${i}`, fileId: batch.id,
+      account: batch.account, reportingMonth: batch.reporting_month.slice(0, 7) }));
+    notes.push(...rows);
+    const dates = rows.map(n => n.publishAt);
+    files.push({ id: batch.id, fileName: batch.file_name, account: batch.account, noteCount: rows.length,
+      minDate: Math.min(...dates), maxDate: Math.max(...dates) });
+  }
+  return { files, notes, batches };
 }
 
-/** 订阅登录状态变化，返回取消订阅函数 */
-export function onAuthChange(cb: (user: User | null) => void): () => void {
-  if (!supabase) return () => {};
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => cb(session?.user ?? null));
-  return () => data.subscription.unsubscribe();
-}
-
-// ───────────────────────── 数据集读写（均受 RLS 约束） ─────────────────────────
-
-async function requireUid(): Promise<string> {
-  if (!supabase) throw new Error('未配置云端数据库');
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  const uid = data.user?.id;
-  if (!uid) throw new Error('请先登录后再操作云端数据');
-  return uid;
-}
-
-export async function listDatasets(): Promise<CloudDatasetMeta[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('datasets')
-    .select('id,name,note_count,account,date_min,date_max,created_at')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as CloudDatasetMeta[];
-}
-
-export async function saveDataset(name: string, payload: CloudDatasetPayload): Promise<CloudDatasetMeta> {
-  const uid = await requireUid();
-  const dates = payload.notes.map((n) => n.publishAt).sort((a, b) => a - b);
-  const row = {
-    name,
-    payload,
-    owner: uid,
-    note_count: payload.notes.length,
-    account: payload.files[0]?.account ?? null,
-    date_min: dates.length ? new Date(dates[0]).toISOString().slice(0, 10) : null,
-    date_max: dates.length ? new Date(dates[dates.length - 1]).toISOString().slice(0, 10) : null,
-  };
-  const { data, error } = await supabase!
-    .from('datasets')
-    .insert(row)
-    .select('id,name,note_count,account,date_min,date_max,created_at')
-    .single();
-  if (error) throw error;
-  return data as CloudDatasetMeta;
-}
-
-export async function loadDataset(id: string): Promise<CloudDatasetPayload> {
-  if (!supabase) throw new Error('未配置云端数据库');
-  const { data, error } = await supabase.from('datasets').select('payload').eq('id', id).single();
-  if (error) throw error;
-  return (data as CloudDatasetRow).payload;
-}
-
-export async function deleteDataset(id: string): Promise<void> {
-  if (!supabase) throw new Error('未配置云端数据库');
-  const { error } = await supabase.from('datasets').delete().eq('id', id);
+export async function importBatch(account: string, month: string, fileName: string, hash: string, notes: Note[]) {
+  const { error } = await client().rpc('dashboard_import', {
+    p_account: account.trim(), p_month: `${month}-01`, p_file_name: fileName,
+    p_hash: hash, p_notes: notes,
+  });
+  if (error?.code === '23505') throw new Error('该账号该月份已有数据，或这个文件已经导入。请先核对历史批次；需要更正时撤销原批次再上传。');
   if (error) throw error;
 }
 
-export async function renameDataset(id: string, name: string): Promise<void> {
-  if (!supabase) throw new Error('未配置云端数据库');
-  const { error } = await supabase.from('datasets').update({ name }).eq('id', id);
+export async function deleteBatch(id: string) {
+  const { error } = await client().rpc('dashboard_delete_batch', { p_id: id });
+  if (error) throw error;
+}
+
+export async function listMembers(): Promise<Member[]> {
+  const { data, error } = await client().from('dashboard_members').select('email,role,created_at').order('email');
+  if (error) throw error;
+  return data as Member[];
+}
+
+export async function setViewer(email: string, allowed: boolean) {
+  const { error } = await client().rpc('dashboard_set_viewer', { p_email: email.trim().toLowerCase(), p_allowed: allowed });
   if (error) throw error;
 }
