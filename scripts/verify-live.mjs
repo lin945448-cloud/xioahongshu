@@ -64,6 +64,12 @@ try {
     assert.equal((await admin.rpc('dashboard_set_viewer', { p_email: identities.viewer, p_allowed: false })).error, null);
     assert.equal((await viewer.from('dashboard_batches').select('id')).data.length, 0);
     assert.equal((await admin.rpc('dashboard_delete_batch', { p_id: imported.data })).error, null);
+    const recovery = await auth.auth.admin.generateLink({ type: 'recovery', email: identities.admin });
+    assert.equal(recovery.error, null);
+    const recovered = createClient(authURL, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    assert.equal((await recovered.auth.verifyOtp({ token_hash: recovery.data.properties.hashed_token, type: 'recovery' })).error, null);
+    assert.equal((await recovered.auth.updateUser({ password: `${randomUUID()}Changed1!` })).error, null);
+    console.log('PASS one-time recovery token verification and self-service password setup');
     console.log('PASS live Auth login, server proxy, administrator import, persistent history, viewer read-only, duplicate rejection, stranger isolation and immediate revocation');
   } else {
   browser = await chromium.launch({ headless: true, channel: process.env.E2E_BROWSER_CHANNEL || 'chrome' });

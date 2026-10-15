@@ -4,13 +4,14 @@ import { useStore } from '@/store/useStore';
 import { create } from 'zustand';
 
 interface Workspace {
+  needsPasswordSetup: boolean;
   email: string | null;
   role: AccessRole;
   checking: boolean;
   error: string;
   batches: BatchMeta[];
 }
-export const useWorkspace = create<Workspace>(() => ({ email: null, role: null, checking: false, error: '', batches: [] }));
+export const useWorkspace = create<Workspace>(() => ({ needsPasswordSetup: false, email: null, role: null, checking: false, error: '', batches: [] }));
 let revision = 0;
 
 export async function refreshWorkspace() {
@@ -46,6 +47,15 @@ export function useWorkspaceSession() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => { void refreshWorkspace().finally(() => { if (active) setReady(true); }); };
     if (!supabase) { setReady(true); return; }
+    const setupToken = new URLSearchParams(window.location.hash.slice(1)).get('setup_token');
+    if (setupToken) {
+      // A one-time recovery token stays in the fragment, never in server access logs.
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      useWorkspace.setState({ needsPasswordSetup: true });
+      void supabase.auth.verifyOtp({ token_hash: setupToken, type: 'recovery' }).then(({ error }) => {
+        if (error) useWorkspace.setState({ error: '密码设置链接已失效或已使用，请联系管理员重新生成。', needsPasswordSetup: false });
+      });
+    }
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'TOKEN_REFRESHED') return;
       ++revision;

@@ -7,6 +7,7 @@ React + Vite 看板继续部署在 Vercel，Supabase 提供邮箱登录、历史
 - 访客：点击「查看演示数据」，公开体验虚构数据的全部筛选、分析和导出功能。
 - 管理员：注册并确认预先配置的管理员邮箱，登录后打开「管理数据与授权」。填写稳定的账号名称、数据归属月份，选择 Excel，核对解析提示后确认入库。
 - 授权成员：管理员在页面添加邮箱；对方以该邮箱注册、确认邮箱并登录，即可查看全部历史记录、筛选、分析和下载报告。注册本身不会授予数据访问权。
+- 已登录用户可在账号信息中修改自己的密码。受信任运维人员也可为已核实身份的账号生成一次性密码设置链接；链接通过 URL fragment 传递，使用一次即失效，不能转发。
 - 数据自动保存在云端，重新登录后自动加载；「数据明细」与分析页使用同一份历史数据。
 - 支持每月 1 日采集后上传和补录历史月份，不限制只能在 1 日操作。归属月份请按业务口径明确填写；默认上一自然月。
 - 同一账号同一归属月份只允许一个文件批次；同一账号重复文件也会拒绝。纠错时管理员先确认撤销原批次，再重新导入。撤销是删除该批次，不可在页面恢复，请保留原始 Excel。
@@ -43,3 +44,7 @@ React + Vite 看板继续部署在 Vercel，Supabase 提供邮箱登录、历史
 `npm test` 在真实 PostgreSQL 引擎 PGlite 上执行迁移及 RLS/RPC 测试，覆盖匿名、未授权、邮箱未确认、管理员、查看者、撤销权限、重复批次、重复文件、非法数据和批次纠错。测试不依赖生产密钥。
 
 集成测试可运行 `node --env-file=.env.local scripts/verify-live.mjs`（需已启动本地服务及 Chrome）。`E2E_BASE_URL` 可指向预览部署；如果环境不能直连 Supabase，设置 `E2E_SUPABASE_PROXY=https://YOUR_PREVIEW/api/supabase`。脚本使用临时 Auth 用户和虚构数据，完成后清理；请优先在独立测试数据库中运行。
+
+本机无法访问 Supabase 时，可在受信任的远程环境运行 `E2E_API_ONLY=1 node --import tsx scripts/verify-remote.ts`，验证真实 Auth、代理及 RLS/RPC，不启动浏览器。不要在不受信任的 PR 构建中注入数据库或 service-role 密钥。
+
+`scripts/prepare-admin.mjs` 和 `scripts/retrieve-admin-setup.mjs` 仅供受信任运维人员手动执行。前者通过 `SETUP_ADMIN_EMAIL` 指定邮箱、建立/确认 Auth 账号并生成一次性密码设置 token；后者将 token 保存到 Git 忽略的 `.admin-setup.local` 并从私有数据库表中移除。不要把准备账号脚本加入常规部署命令，不要发布该文件或将 token 输出至构建日志。
