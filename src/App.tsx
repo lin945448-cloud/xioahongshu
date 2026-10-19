@@ -3,6 +3,8 @@ import { useStore } from '@/store/useStore';
 import { TopNav } from '@/components/TopNav';
 import { FilterBar } from '@/components/FilterBar';
 import { DropZone } from '@/components/DataSource';
+import { WorkspacePanel } from '@/components/WorkspacePanel';
+import { useWorkspace, useWorkspaceSession } from '@/hooks/useWorkspace';
 import { Toasts } from '@/components/ui/Feedback';
 import { OverviewView } from '@/views/OverviewView';
 import { MetricView } from '@/views/MetricView';
@@ -17,7 +19,7 @@ const FEATURES = [
   { icon: Users, title: '账号对比', desc: '多账号趋势叠加、六宫格总览、月度环比透视表' },
   { icon: FolderTree, title: '品类分析', desc: '排行榜 · 品类趋势 · 四象限气泡图 · 品类×体裁热力表' },
   { icon: Download, title: '报告导出', desc: '多 Sheet Excel、自包含 HTML 报告、CSV、PDF 打印' },
-  { icon: Shield, title: '纯本地计算', desc: '解析与计算全部在浏览器完成，数据不上传任何服务器' },
+  { icon: Shield, title: '内部数据权限', desc: '管理员导入月度数据，授权成员查看分析，公开演示独立开放' },
 ];
 
 function Welcome() {
@@ -31,7 +33,7 @@ function Welcome() {
           小红书数据分析看板
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-500">
-          上传小红书后台导出的 Excel，自动完成清洗、指标计算与多维可视化。
+          管理员上传小红书后台导出的 Excel，自动完成清洗、存储与多维可视化。
           支持多账号横向对比、品类洞察与一键导出分析报告。
         </p>
       </div>
@@ -81,13 +83,18 @@ const VIEWS = {
 } as const;
 
 export default function App() {
+  const ready = useWorkspaceSession();
+  const role = useWorkspace(s => s.role);
+  const checking = useWorkspace(s => s.checking);
+  const isDemo = useStore(s => s.isDemo);
   const notes = useStore((s) => s.notes);
   const tab = useStore((s) => s.tab);
   const View = VIEWS[tab];
 
-  if (!notes.length) {
+  if (!notes.length || (!isDemo && (!ready || checking || !role))) {
     return (
       <>
+        <WorkspacePanel />
         <Welcome />
         <Toasts />
       </>
@@ -97,12 +104,13 @@ export default function App() {
   return (
     <div className="min-h-full">
       <TopNav />
+      <WorkspacePanel />
       <FilterBar />
       <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6">
         <View />
       </main>
       <footer className="no-print border-t border-ink-200/70 py-6 text-center text-xs text-ink-400">
-        小红书数据分析看板 · 全部计算在浏览器本地完成，数据不会上传服务器
+        小红书数据分析看板 · 演示数据公开 · 内部数据仅授权成员可见
       </footer>
       <Toasts />
     </div>

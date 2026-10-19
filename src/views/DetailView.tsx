@@ -157,6 +157,7 @@ export function DetailView() {
                   </button>
                 </th>
                 <th className="table-cell">体裁</th>
+                <th className="table-cell">数据归属月份</th>
                 <th className="table-cell">品类</th>
                 {cols.map((k) => (
                   <th key={k} className="table-cell text-right">
@@ -190,6 +191,7 @@ export function DetailView() {
                   <td className="table-cell">
                     <span className="chip py-0.5 text-[11px]">{n.genre}</span>
                   </td>
+                  <td className="table-cell text-xs text-ink-500">{n.reportingMonth ?? n.ym}</td>
                   <td className="table-cell text-xs text-ink-600">{n.category}</td>
                   {cols.map((k) => {
                     const m = getMetric(k);
