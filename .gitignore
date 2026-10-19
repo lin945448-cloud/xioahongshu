@@ -10,3 +10,7 @@ dist-ssr
 npm-debug.log*
 yarn-error.log*
 tsconfig.tsbuildinfo
+.wrangler/
+.dev.vars
+.dev.vars.*
+.cloudflare-secrets.json

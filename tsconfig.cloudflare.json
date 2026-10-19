@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["cloudflare/**/*.ts"],
+  "compilerOptions": { "tsBuildInfoFile": "./node_modules/.cache/cloudflare.tsbuildinfo" }
+}
