@@ -87,8 +87,16 @@ try {
     assert.equal(recovery.error, null);
     const recovered = createClient(authURL, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
     assert.equal((await recovered.auth.verifyOtp({ token_hash: recovery.data.properties.hashed_token, type: 'recovery' })).error, null);
-    assert.equal((await recovered.auth.updateUser({ password: `${randomUUID()}Changed1!` })).error, null);
-    console.log('PASS one-time recovery token verification and self-service password setup');
+    const newPassword = `${randomUUID()}Changed1!`;
+    assert.equal((await recovered.auth.updateUser({ password: newPassword })).error, null);
+    assert.equal((await recovered.auth.signOut({ scope: 'local' })).error, null);
+    const relogin = createClient(authURL, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const signedInAgain = await relogin.auth.signInWithPassword({ email: identities.admin, password: newPassword });
+    assert.equal(signedInAgain.error, null);
+    assert.equal(signedInAgain.data.user.email, identities.admin);
+    assert.equal((await relogin.rpc('dashboard_role')).data, 'admin');
+    await relogin.auth.signOut({ scope: 'local' });
+    console.log('PASS recovery password reset followed by actual sign-out and fresh administrator password login');
     console.log('PASS live Auth login, server proxy, administrator import, persistent history, viewer read-only, duplicate rejection, stranger isolation and immediate revocation');
   } else {
   browser = await chromium.launch({ headless: true, channel: process.env.E2E_BROWSER_CHANNEL || 'chrome' });

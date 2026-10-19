@@ -4,8 +4,26 @@ import type { Note, UploadedFile } from '@/types';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const isSupabaseConfigured = Boolean(url && key);
-export const supabase = isSupabaseConfigured ? createClient(
-  import.meta.env.PROD ? `${window.location.origin}/api/supabase` : url!, key!) : null;
+const clientUrl = import.meta.env.PROD ? `${window.location.origin}/api/supabase` : url!;
+export const supabase = isSupabaseConfigured ? createClient(clientUrl, key!) : null;
+
+export async function setPasswordAndVerify(password: string, expectedUserId?: string): Promise<void> {
+  const current = client();
+  const identity = await current.auth.getUser();
+  if (identity.error || !identity.data.user?.email) throw new Error('登录已失效，请重新打开密码设置链接');
+  if (expectedUserId && identity.data.user.id !== expectedUserId) throw new Error('当前登录账号与密码重置账号不一致，请重新打开设置链接');
+  const changed = await current.auth.updateUser({ password });
+  if (changed.error) throw changed.error;
+  // Verify the password through a fresh login, independent of the recovery session.
+  const verifier = createClient(clientUrl, key!, { auth: {
+    persistSession: false, autoRefreshToken: false, detectSessionInUrl: false,
+    storageKey: `password-verification-${crypto.randomUUID()}`,
+  } });
+  const checked = await verifier.auth.signInWithPassword({ email: identity.data.user.email, password });
+  if (checked.error) throw new Error(`密码更新后重新登录验证失败，请暂时不要退出：${checked.error.message}`);
+  if (checked.data.user?.id !== identity.data.user.id) throw new Error('密码验证账号不一致，请重新设置');
+  await verifier.auth.signOut({ scope: 'local' });
+}
 export type AccessRole = 'admin' | 'viewer' | null;
 export interface BatchMeta {
   id: string;

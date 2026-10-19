@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useStore } from '@/store/useStore';
 import { refreshWorkspace, useWorkspace } from '@/hooks/useWorkspace';
-import { deleteBatch, importBatch, isSupabaseConfigured, listMembers, setViewer, supabase, type Member } from '@/lib/supabase';
+import { deleteBatch, importBatch, isSupabaseConfigured, listMembers, setPasswordAndVerify, setViewer, supabase, type Member } from '@/lib/supabase';
 import { parseWorkbook, type ParseResult } from '@/lib/parseExcel';
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String((error as { message?: string })?.message ?? error);
 
 export function WorkspacePanel() {
-  const { email, role, checking, error, batches, needsPasswordSetup } = useWorkspace();
+  const { email, role, checking, error, batches, needsPasswordSetup, passwordSetupUserId } = useWorkspace();
   const demo = useStore(s => s.isDemo);
   const [open, setOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -65,7 +65,8 @@ export function WorkspacePanel() {
       </div>
       {error && <p role="alert" className="text-sm text-red-700">内部数据读取失败：{error}。请重试或联系管理员，演示数据仍可使用。</p>}
       {expanded && <div className="border-t border-ink-100 pt-4">
-        {!isSupabaseConfigured ? <p className="text-sm text-ink-500">内部数据库尚未配置，请联系管理员完成部署设置。公开演示可正常使用。</p> : !email ?
+        {!isSupabaseConfigured ? <p className="text-sm text-ink-500">内部数据库尚未配置，请联系管理员完成部署设置。公开演示可正常使用。</p> : needsPasswordSetup && !passwordSetupUserId ?
+          <p role="status" className="text-sm text-ink-500">正在验证密码设置链接，请稍候…</p> : !email ?
           <form onSubmit={authenticate} className="max-w-md space-y-3">
             <label className="block text-sm">邮箱<input className="input mt-1 w-full" type="email" autoComplete="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required /></label>
             <label className="block text-sm">密码<input className="input mt-1 w-full" type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={8} value={password} onChange={e => setPassword(e.target.value)} required /></label>
@@ -82,27 +83,33 @@ export function WorkspacePanel() {
 }
 
 function PasswordForm({ setup = false }: { setup?: boolean }) {
+  const setupUserId = useWorkspace(s => s.passwordSetupUserId);
+  const email = useWorkspace(s => s.email);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  if (setup && !setupUserId) return <p role="status" className="text-sm text-ink-500">正在验证密码设置链接，请稍候…</p>;
   return <form className="mt-3 max-w-md space-y-3" onSubmit={e => {
     e.preventDefault();
     if (password !== confirmation) { setMessage('两次输入的密码不一致'); return; }
     setBusy(true); setMessage('');
-    void supabase!.auth.updateUser({ password }).then(({ error }) => {
-      if (error) { setMessage(error.message); return; }
+    void setPasswordAndVerify(password, setup ? setupUserId! : undefined).then(() => {
       setPassword(''); setConfirmation('');
-      useWorkspace.setState({ needsPasswordSetup: false });
-      setMessage('密码设置成功，以后使用邮箱和新密码登录即可。');
-      useStore.getState().pushToast('success', '密码设置成功');
-    }).catch(e => setMessage(errorText(e))).finally(() => setBusy(false));
+      useWorkspace.setState({ needsPasswordSetup: false, passwordSetupUserId: null });
+      setMessage('密码已保存，并已验证可以用新密码重新登录。');
+      useStore.getState().pushToast('success', '密码已保存，并已验证可以重新登录');
+    }).catch(e => {
+      setMessage(errorText(e));
+      useStore.getState().pushToast('error', errorText(e));
+    }).finally(() => setBusy(false));
   }}>
     <h2 className="text-base font-semibold">{setup ? '设置你的登录密码' : '修改登录密码'}</h2>
+    <p className="text-sm font-medium">账号：{email}</p>
     <p className="text-xs text-ink-500">请设置至少 10 位密码。密码只提交给登录服务，不需要告诉任何人。</p>
     <label className="block text-sm">新密码<input className="input mt-1 w-full" type="password" autoComplete="new-password" minLength={10} required value={password} onChange={e => setPassword(e.target.value)} /></label>
     <label className="block text-sm">确认新密码<input className="input mt-1 w-full" type="password" autoComplete="new-password" minLength={10} required value={confirmation} onChange={e => setConfirmation(e.target.value)} /></label>
-    <button className="btn btn-primary" disabled={busy}>{busy ? '保存中…' : '保存密码'}</button>
+    <button className="btn btn-primary" disabled={busy}>{busy ? '正在保存并验证登录…' : '保存密码'}</button>
     {message && <p role="status" className="text-sm text-ink-600">{message}</p>}
   </form>;
 }

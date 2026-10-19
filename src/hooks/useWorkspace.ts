@@ -5,13 +5,14 @@ import { create } from 'zustand';
 
 interface Workspace {
   needsPasswordSetup: boolean;
+  passwordSetupUserId: string | null;
   email: string | null;
   role: AccessRole;
   checking: boolean;
   error: string;
   batches: BatchMeta[];
 }
-export const useWorkspace = create<Workspace>(() => ({ needsPasswordSetup: false, email: null, role: null, checking: false, error: '', batches: [] }));
+export const useWorkspace = create<Workspace>(() => ({ needsPasswordSetup: false, passwordSetupUserId: null, email: null, role: null, checking: false, error: '', batches: [] }));
 let revision = 0;
 
 export async function refreshWorkspace() {
@@ -54,13 +55,18 @@ export function useWorkspaceSession() {
     if (setupToken) {
       // A one-time recovery token stays in the fragment, never in server access logs.
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      useWorkspace.setState({ needsPasswordSetup: true });
-      void supabase.auth.verifyOtp({ token_hash: setupToken, type: setupType }).then(({ error }) => {
-        if (error) useWorkspace.setState({ error: '密码设置链接已失效或已使用，请联系管理员重新生成。', needsPasswordSetup: false });
+      useWorkspace.setState({ needsPasswordSetup: true, passwordSetupUserId: null });
+      void supabase.auth.verifyOtp({ token_hash: setupToken, type: setupType }).then(({ data, error }) => {
+        if (error || !data.user) {
+          useWorkspace.setState({ error: '密码设置链接已失效或已使用，请联系管理员重新生成。', needsPasswordSetup: false, passwordSetupUserId: null });
+        } else {
+          useWorkspace.setState({ passwordSetupUserId: data.user.id, email: data.user.email ?? null });
+        }
       });
     }
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'TOKEN_REFRESHED') return;
+      if (event === 'SIGNED_OUT') useWorkspace.setState({ needsPasswordSetup: false, passwordSetupUserId: null });
       ++revision;
       if (!useStore.getState().isDemo) useStore.getState().clearAll();
       useWorkspace.setState({ role: null, email: null, batches: [], checking: true });
